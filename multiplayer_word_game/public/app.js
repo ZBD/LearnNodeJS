@@ -297,6 +297,199 @@ jQuery(function($) {
                 }
             },
 
+            /**
+             * All 10 rounds have played out. End the game.
+             * @param data
+             */
+            endGame: function(data) {
+                var $p1 = $('#player1Score');
+                var p1Score = +$1.find('.score').text();
+                var p1Name = $p1.find('.playername').text();
+
+                var $p2 = $('#player2Score');
+                var p2Score = +$1.find('.score').text();
+                var p2Name = $p1.find('.playername').text();
+
+                var winner = (p1Score < p2Score) ? p2Name: p1Name;
+                var tie = (p1Score === p2Score);
+
+                if (tie) {
+                    $('#hostWord').text("It's a Tie!");
+                } else {
+                    $('#hostWord').text(winner + ' Wins!');
+                }
+                App.doTextFit('#hostWord');
+
+                // Reset game data
+                App.Host.numPlayersInRoom = 0;
+                App.Host.isNewGame = true;
+            },
+
+            /** 
+             * A player hit the 'Start Again' button after the end of a gameOver
+             */
+            restartGame: function() {
+                App.$gameArea.html(App.$templateNewGame);
+                $('#spanNewGameCode').text(App.gameId);
+            }
+        },
+
+        /* ************************************************** *
+         *                      Player Code                   *
+         * ************************************************** */
+        Player: {
+            /**
+             * A reference to the socket ID of the Host
+             */
+            hostSocketId: '',
+
+            /**
+             * The player's name entered on the 'Join' screen.
+             */
+            myName: '',
+
+            /**
+             * click handler for the JOIN button
+             */
+            onJoinClick: function() {
+                console.log('Clicked "Join A Game"');
+                App.$gameArea.html(App.$templateJoinGame);
+            },
+
+            /**
+             * The player entered their name and gameId
+             * and clicked start.
+             */
+            onPlayerStartClick: function() {
+                console.log('Player clicked "Start"');
+
+                var data = {
+                    gameId: +($('#inputGameId').val()),
+                    playerName: $('#inputPlayerName').val() || 'anon'
+                };
+
+                IO.socket.emit('playerJoinGame', data);
+
+                App.myRole = 'Player';
+                App.player.myName = data.playerName;
+            },
+
+            /**
+             * Click handler for the Player hitting a word in the word list.
+             */
+            onPlayerAnswerClick: function() {
+                console.log('Clicked Answer Button');
+                var $btn = $(this); //the tapped button
+                var answer = $btn.val();
+
+                var data = {
+                    gameId: App.gameId,
+                    playerId: App.mySocketId,
+                    answer: answer,
+                    round: App.currentRound
+                };
+                IO.Socket.emit('playerAnswer', data);
+            },
+
+            /**
+             * Click handler for the "Start Again" button that appears when a game is over.
+             */
+            onPlayerRestart: function() {
+                var data = {
+                    gameId: App.gameId,
+                    playerName: App.Player.myName
+                }
+                IO.socket.emit('playerRestart', data);
+                App.currentRound = 0;
+                $('#gameArea').html("<h3>Waiting on host to start new game. </h3>");
+            },
+
+            updateWaitingScreen: function(data) {
+                if (IO.socket.Socket.sessionid === data.mySocketId) {
+                    App.myRole = 'Player';
+                    App.gameId = data.gameId;
+
+                    $('#playerWaitingMessage').append('<p/>').text('Joined Game ' + data.gameId + '. Please wait for game to begin.');
+                }
+            },
+
+            /**
+             * Display 'Get Ready' while the countdown timer ticks down.
+             * @param hostData
+             */
+            gameCountdown: function(hostData) {
+                App.Player.hostSocketId = hostData.mySocketId;
+                $('#gameArea').html('<div class="gameOver">Get Ready!</div>');
+            },
+
+            /**
+             * Show the list of words for the current round.
+             * @param data{{round: *, word: *, answer: *, list: Array}}
+             */
+            newWord: function(data) {
+                // Create an unordered list element
+                var $list = $('<ul/>').attr('id', 'ulAnswers');
+                
+                // Insert a list item for each word in the word list received from the server
+                $.each(data.list, function() {
+                    $list.append($('<li/>')
+                        .append($('<button/>')
+                            .addClass('btnAnswer')
+                            .val(this).html(this)))
+                });
+
+
+                $('#gameArea').html($list);
+            }.
+
+            /**
+             * Show the "Game Over" screen.
+             */
+            endGame: function() {
+                $('#gameArea').html('<div class="gameOver">Game Over!</div>')
+                    .append(
+                        // Create a button to start a new game.
+                        $('<button>Start Again</button>').attr('id', 'btnPlayerRestart').addClass('btn').addClass('btnGameOver'));
+            }
+        },
+
+
+        /* ************************************************* *
+         *                  Utility Code                     *
+         * ************************************************* */
+        countDown: function($el, startTime, callback) {
+            $el.text(startTime);
+            App.doTextFit('#hostWord');
+            var timer = setinterval(countItDown, 1000);
+            function countItDown() {
+                startTime -= 1;
+                $el.text(startTime);
+                App.doTextFit('#hostWord');
+                if(startTime<=0) {
+                    clearInterval(timer);
+                    callback();
+                    return;
+                }
+            }
+        },
+
+        doTextFit: function(el) {
+            textFit($(el)[0], {
+                alignHoriz: true,
+                alignVert: false,
+                widthOnly: true;
+                reProcess: true;
+                maxFontSize: 300
+            });
+        }
+    };
+
+    IO.init();
+    App.init();
+}($));
+
+
+                
 
                 
 
