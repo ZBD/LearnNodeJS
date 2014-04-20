@@ -214,7 +214,91 @@ jQuery(function($) {
             /**
              * show the Host screen containing the game URL and unique game ID
              */
+            displayNewGameScreen: function() {
+                // Fill the game screen with the appropriate HTML
+                App.$gameArea.html(App.$templateNewGame);
 
+                // Display the URL on screen
+                $('#gameURL').text(windows.location.href);
+                App.doTextFit('#gameURL');
+
+                //show the gameId / room id on screen
+                $('#spanNewGameCode').text(App.gameId);
+            },
+
+            updateWaitingScreen: function(data) {
+                if (App.Host.isNewGame) {
+                    App.Host.displayNewGameScreen();
+                }
+                $('#playersWaiting').append('<p/>').text('Player ' + data.playerName + ' joined the game.');
+
+                // Store the new player's data on the Host.
+                App.Host.players.push(data);
+
+                App.Host.numPlayersInRoom += 1;
+
+                if (App.Host.numPlayersInRoom === 2) {
+                    IO.socket.emit('hostRoomFull', App.gameId);
+                }
+            },
+
+            /**
+             * show the countdown screen
+             */
+            gameCountdown: function() {
+                App.$gameArea.html(App.$hostGame);
+                App.doTextFit('#hostWord');
+
+                var $secondsLeft = $('#hostWord');
+                App.countDown( $secondsLeft, 5, function() {
+                    IO.socket.emit('hostCountdownFinished', App.gameId);
+                });
+
+                $('#player1Score').find('.playerName').html(App.Host.players[0].playerName);
+                $('#player2Score').find('.playerName').html(App.Host.players[1].playerName);
+
+                // Set the score section on screen to 0 for each player.
+                $('#player1Score').find('.score').attr('id', App.Host.players[0].mySocketId);
+                $('#player2Score').find('.score').attr('id', App.Host.players[1].mySocketId);
+            },
+
+            /**
+             * Show the word for the current round on screen.
+             * @param data{{round: *, word: *, answer: *, list: Array}}
+             */
+            newWord: function(data) {
+                $('#hostWord').text(data.word);
+                App.doTextFit('#hostWord');
+
+                App.Host.currentCorrectAnswer = data.answer;
+                App.Host.currentRound = data.round;
+            }
+
+            /**
+             * check the answer clicked by a player.
+             * @param data{{round: *, playerId: *, answer: *, gameId: *}}
+             */
+            checkAnswer: function(data) {
+                if (data.round === App.currentRound) {
+                    var $pScore = $('#' + data.playerId);
+                    if (App.Host.currentCorrectAnswer === data.answer) {
+                        $pScore.text( +$pScore.text() + 5);
+                        App.currentRound += 1;
+
+                        var data = {
+                            gameId: App.gameId,
+                            round: App.currentRound
+                        };
+
+                        IO.socket.emit('hostNextRound', data);
+                    } else {
+                        $pScore.text( +$pScore.text() - 3);
+                    }
+                }
+            },
+
+
+                
 
 
 
