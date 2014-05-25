@@ -1,4 +1,4 @@
-var todo = angular.module('bindiTodo', []);
+var todo = angular.module('todo', []);
 
 function mainController($scope, $http) {
 	$scope.formData = {};

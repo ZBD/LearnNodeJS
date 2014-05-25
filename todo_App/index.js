@@ -1,49 +1,154 @@
+#!/bin/env node
+//  OpenShift sample Node application
 var express = require('express');
-var app = express();
+var fs      = require('fs');
 var mongoose = require('mongoose');
 
-var uristring = process.env.MONGOLAB_URI ||
-		process.env.MONGOHQ_URI ||
-		'mongodb://localhost/todo';
 
-var port = process.env.PORT || 5000;
 
-mongoose.connect(uristring, function (err, res) {
-	if (err) {
-		console.log('ERROR connecting to: ' + uristring + '. ' + err);
-	}
-	else {
-		console.log('Succeed connected to: ' + uristring);
-	}
-});
+/**
+ *  Define the sample application.
+ */
+var SampleApp = function() {
 
-app.configure(function() {
-	app.use(express.static(__dirname + '/public'));
-	app.use(express.logger('dev'));
-	app.use(express.bodyParser());
-});
+    //  Scope.
+    var self = this;
 
-//define model
-var Todo = mongoose.model('Todo', {text : String});
 
-//routes
-app.get('/api/todos', function(req, res) {
-	Todo.find(function(err, todos) {
-		if (err) {
-			res.send(err);
-		}
-		res.json(todos);
+    /*  ================================================================  */
+    /*  Helper functions.                                                 */
+    /*  ================================================================  */
+
+    /**
+     *  Set up server IP address and port # using env variables/defaults.
+     */
+    self.setupVariables = function() {
+        //  Set the environment variables we need.
+        self.ipaddress = process.env.OPENSHIFT_NODEJS_IP;
+        self.port      = process.env.OPENSHIFT_NODEJS_PORT || 8080;
+
+	// mongoose.connect('mongodb://username:password@host:port/database?options...');
+	self.dburistring = 'mongodb://admin:M-SrDFt6wtjK@'+process.env.OPENSHIFT_MONGODB_DB_HOST+':'+process.env.OPENSHIFT_MONGODB_DB_PORT+'/todo';	
+
+        if (typeof self.ipaddress === "undefined") {
+            //  Log errors on OpenShift but continue w/ 127.0.0.1 - this
+            //  allows us to run/test the app locally.
+            console.warn('No OPENSHIFT_NODEJS_IP var, using 127.0.0.1');
+            self.ipaddress = "127.0.0.1";
+        };
+    };
+
+
+    /**
+     *  Populate the cache.
+     */
+    self.populateCache = function() {
+        if (typeof self.zcache === "undefined") {
+            self.zcache = { 'index.html': '', 'todo.js':'' };
+        }
+
+        //  Local cache for static content.
+        self.zcache['index.html'] = fs.readFileSync('./index.html');
+	self.zcache['todo.js'] = fs.readFileSync('./todo.js');
+    };
+
+
+    /**
+     *  Retrieve entry (content) from cache.
+     *  @param {string} key  Key identifying content to retrieve from cache.
+     */
+    self.cache_get = function(key) { return self.zcache[key]; };
+
+
+    /**
+     *  terminator === the termination handler
+     *  Terminate server on receipt of the specified signal.
+     *  @param {string} sig  Signal to terminate on.
+     */
+    self.terminator = function(sig){
+        if (typeof sig === "string") {
+           console.log('%s: Received %s - terminating sample app ...',
+                       Date(Date.now()), sig);
+           process.exit(1);
+        }
+        console.log('%s: Node server stopped.', Date(Date.now()) );
+    };
+
+
+    /**
+     *  Setup termination handlers (for exit and a list of signals).
+     */
+    self.setupTerminationHandlers = function(){
+        //  Process on exit and signals.
+        process.on('exit', function() { self.terminator(); });
+
+        // Removed 'SIGPIPE' from the list - bugz 852598.
+        ['SIGHUP', 'SIGINT', 'SIGQUIT', 'SIGILL', 'SIGTRAP', 'SIGABRT',
+         'SIGBUS', 'SIGFPE', 'SIGUSR1', 'SIGSEGV', 'SIGUSR2', 'SIGTERM'
+        ].forEach(function(element, index, array) {
+            process.on(element, function() { self.terminator(element); });
+        });
+    };
+
+
+    /*  ================================================================  */
+    /*  App server functions (main app logic here).                       */
+    /*  ================================================================  */
+
+    /**
+     *  Create the routing table entries + handlers for the application.
+     */
+    self.createRoutes = function() {
+        self.routes = { };
+
+        self.routes['/asciimo'] = function(req, res) {
+            var link = "http://i.imgur.com/kmbjB.png";
+            res.send("<html><body><img src='" + link + "'></body></html>");
+        };
+
+        self.routes['/'] = function(req, res) {
+            res.setHeader('Content-Type', 'text/html');
+            res.send(self.cache_get('index.html') );
+        };
+    };
+
+
+    /**
+     *  Initialize the server (express) and create the routes and register
+     *  the handlers.
+     */
+    self.initializeServer = function() {
+        self.createRoutes();
+        //self.app = express.createServer();
+	self.app = express(); 
+
+	self.app.configure(function() {
+		self.app.use(express.static(__dirname + '/public'));
+		self.app.use(express.bodyParser());
+		self.app.use(express.methodOverride());
+  		self.app.use(express.errorHandler({ dumpExceptions: true, showStack: true }));
 	});
-});
 
-app.post('/api/todos', function(req, res) {
-	Todo.create({
-		text : req.body.text,
-		done : false
-	}, function(err, todo) {
+/*
+        //  Add handlers for the app (from the routes).        
+	for (var r in self.routes) {
+            self.app.get(r, self.routes[r]);
+        }
+*/
+
+	mongoose.connect(self.dburistring, function (err, res) {
 		if (err) {
-			res.send(err);
+			console.log('ERROR connecting to: ' + self.dburistring + '. ' + err);
 		}
+		else {
+			console.log('Succeed connected to: ' + self.dburistring);
+		}
+	});
+
+	var Todo = mongoose.model('Todo', {text : String});
+
+	//routes
+	self.app.get('/api/todos', function(req, res) {
 		Todo.find(function(err, todos) {
 			if (err) {
 				res.send(err);
@@ -51,28 +156,79 @@ app.post('/api/todos', function(req, res) {
 			res.json(todos);
 		});
 	});
-});
 
-app.delete('/api/todos/:todo_id', function(req, res) {
-	Todo.remove({_id : req.params.todo_id}, function(err, todo) {
-		if (err) {
-			res.send(err);
-		}
-		Todo.find(function(err, todos) {
+	self.app.post('/api/todos', function(req, res) {
+		Todo.create({
+			text : req.body.text,
+			done : false
+		}, function(err, todo) {
 			if (err) {
 				res.send(err);
 			}
-			res.json(todos);
+			Todo.find(function(err, todos) {
+				if (err) {
+					res.send(err);
+				}
+				res.json(todos);
+			});
 		});
 	});
-});
 
-app.get('*', function(req, res) {
-	res.sendfile('./public/index.html');
-});
+	self.app.delete('/api/todos/:todo_id', function(req, res) {
+		Todo.remove({_id : req.params.todo_id}, function(err, todo) {
+			if (err) {
+				res.send(err);
+			}
+			Todo.find(function(err, todos) {
+				if (err) {
+					res.send(err);
+				}
+				res.json(todos);
+			});
+		});
+	});
+
+	self.app.get('*', function(req, res) {
+		res.sendfile('./public/index.html');
+	});
 
 
-app.listen(port);
-console.log('App listening on port ' + port);
 
+    };
+
+
+    /**
+     *  Initializes the sample application.
+     */
+    self.initialize = function() {
+        self.setupVariables();
+        self.populateCache();
+        self.setupTerminationHandlers();
+
+        // Create the express server and routes.
+        self.initializeServer();
+    };
+
+
+    /**
+     *  Start the server (starts up the sample application).
+     */
+    self.start = function() {
+        //  Start the app on the specific interface (and port).
+        self.app.listen(self.port, self.ipaddress, function() {
+            console.log('%s: Node server started on %s:%d ...',
+                        Date(Date.now() ), self.ipaddress, self.port);
+        });
+    };
+
+};   /*  Sample Application.  */
+
+
+
+/**
+ *  main():  Main code.
+ */
+var zapp = new SampleApp();
+zapp.initialize();
+zapp.start();
 
