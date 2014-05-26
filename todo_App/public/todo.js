@@ -5,6 +5,12 @@ function mainController($scope, $http) {
 	$http.get('/api/todos')
 		.success(function(data) {
 			$scope.todos = data;
+            if (data.length > 1) {
+                $scope.thingORthings = 'things';
+            }
+            else {
+                $scope.thingORthings = 'thing';
+            }
 			console.log(data);
 		})
 		.error(function(data) {
@@ -15,6 +21,12 @@ function mainController($scope, $http) {
 			.success(function(data) {
 				$scope.formData = {};
 				$scope.todos = data;
+                if (data.length > 1) {
+                    $scope.thingORthings = 'things';
+                }
+                else {
+                    $scope.thingORthings = 'thing';
+                }
 				console.log(data);
 			})
 			.error(function(data) {
@@ -26,6 +38,12 @@ function mainController($scope, $http) {
 		$http.delete('/api/todos/' + id)
 			.success(function(data) {
 				$scope.todos = data;
+                if (data.length > 1) {
+                    $scope.thingORthings = 'things';
+                }
+                else {
+                    $scope.thingORthings = 'thing';
+                }
 				console.log(data);
 			})
 			.error(function(data) {
