@@ -1,154 +1,100 @@
 #!/bin/env node
-//  OpenShift sample Node application
 var express = require('express');
-var fs      = require('fs');
+var app = express();
 var mongoose = require('mongoose');
+var util = require('util');
+var passport = require('passport');
+var GoogleStrategy = require('passport-google').Strategy;
 
+var uristring = 'mongodb://'+process.env.OPENSHIFT_MONGODB_DB_HOST+':'+process.env.OPENSHIFT_MONGODB_DB_PORT;
 
-
-/**
- *  Define the sample application.
- */
-var SampleApp = function() {
-
-    //  Scope.
-    var self = this;
-
-
-    /*  ================================================================  */
-    /*  Helper functions.                                                 */
-    /*  ================================================================  */
-
-    /**
-     *  Set up server IP address and port # using env variables/defaults.
-     */
-    self.setupVariables = function() {
-        //  Set the environment variables we need.
-        self.ipaddress = process.env.OPENSHIFT_NODEJS_IP;
-        self.port      = process.env.OPENSHIFT_NODEJS_PORT || 8080;
-
-	// mongoose.connect('mongodb://username:password@host:port/database?options...');
-	self.dburistring = 'mongodb://admin:M-SrDFt6wtjK@'+process.env.OPENSHIFT_MONGODB_DB_HOST+':'+process.env.OPENSHIFT_MONGODB_DB_PORT+'/todo';	
-
-        if (typeof self.ipaddress === "undefined") {
-            //  Log errors on OpenShift but continue w/ 127.0.0.1 - this
-            //  allows us to run/test the app locally.
-            console.warn('No OPENSHIFT_NODEJS_IP var, using 127.0.0.1');
-            self.ipaddress = "127.0.0.1";
-        };
-    };
-
-
-    /**
-     *  Populate the cache.
-     */
-    self.populateCache = function() {
-        if (typeof self.zcache === "undefined") {
-            self.zcache = { 'index.html': '', 'todo.js':'' };
-        }
-
-        //  Local cache for static content.
-        self.zcache['index.html'] = fs.readFileSync('./index.html');
-	self.zcache['todo.js'] = fs.readFileSync('./todo.js');
-    };
-
-
-    /**
-     *  Retrieve entry (content) from cache.
-     *  @param {string} key  Key identifying content to retrieve from cache.
-     */
-    self.cache_get = function(key) { return self.zcache[key]; };
-
-
-    /**
-     *  terminator === the termination handler
-     *  Terminate server on receipt of the specified signal.
-     *  @param {string} sig  Signal to terminate on.
-     */
-    self.terminator = function(sig){
-        if (typeof sig === "string") {
-           console.log('%s: Received %s - terminating sample app ...',
-                       Date(Date.now()), sig);
-           process.exit(1);
-        }
-        console.log('%s: Node server stopped.', Date(Date.now()) );
-    };
-
-
-    /**
-     *  Setup termination handlers (for exit and a list of signals).
-     */
-    self.setupTerminationHandlers = function(){
-        //  Process on exit and signals.
-        process.on('exit', function() { self.terminator(); });
-
-        // Removed 'SIGPIPE' from the list - bugz 852598.
-        ['SIGHUP', 'SIGINT', 'SIGQUIT', 'SIGILL', 'SIGTRAP', 'SIGABRT',
-         'SIGBUS', 'SIGFPE', 'SIGUSR1', 'SIGSEGV', 'SIGUSR2', 'SIGTERM'
-        ].forEach(function(element, index, array) {
-            process.on(element, function() { self.terminator(element); });
-        });
-    };
-
-
-    /*  ================================================================  */
-    /*  App server functions (main app logic here).                       */
-    /*  ================================================================  */
-
-    /**
-     *  Create the routing table entries + handlers for the application.
-     */
-    self.createRoutes = function() {
-        self.routes = { };
-
-        self.routes['/asciimo'] = function(req, res) {
-            var link = "http://i.imgur.com/kmbjB.png";
-            res.send("<html><body><img src='" + link + "'></body></html>");
-        };
-
-        self.routes['/'] = function(req, res) {
-            res.setHeader('Content-Type', 'text/html');
-            res.send(self.cache_get('index.html') );
-        };
-    };
-
-
-    /**
-     *  Initialize the server (express) and create the routes and register
-     *  the handlers.
-     */
-    self.initializeServer = function() {
-        self.createRoutes();
-        //self.app = express.createServer();
-	self.app = express(); 
-
-	self.app.configure(function() {
-		self.app.use(express.static(__dirname + '/public'));
-		self.app.use(express.bodyParser());
-		self.app.use(express.methodOverride());
-  		self.app.use(express.errorHandler({ dumpExceptions: true, showStack: true }));
-	});
-
+var port = process.env.OPENSHIFT_NODEJS_PORT || 5000;
 /*
-        //  Add handlers for the app (from the routes).        
-	for (var r in self.routes) {
-            self.app.get(r, self.routes[r]);
-        }
+mongoose.connect(uristring, function (err, res) {
+	if (err) {
+		console.log('ERROR connecting to: ' + uristring + '. ' + err);
+	}
+	else {
+		console.log('Succeed connected to: ' + uristring);
+	}
+});
 */
 
-	mongoose.connect(self.dburistring, function (err, res) {
+// Passport session setup.
+// To support persistent login sessions, Passport needs to be able to
+// serialize users into and deserialize users out of the session. Typically,
+// this will be as simple as storing the user ID when serializing, and finding
+// the user by ID when deserializing. However, since this example does not
+// have a database of user records, the complete Google profile is serialized
+// and deserialized.
+passport.serializeUser(function(user, done) {
+      done(null, user);
+});
+
+passport.deserializeUser(function(obj, done) {
+        done(null, obj);
+});
+
+
+// Use the GoogleStrategy within Passport.
+// Strategies in passport require a `validate` function, which accept
+// credentials (in this case, an OpenID identifier and profile), and invoke a
+// callback with a user object.
+passport.use(new GoogleStrategy({
+    returnURL: 'http://localhost:5000/auth/google/return',
+    realm: 'http://localhost:5000/'
+  },
+  function(identifier, profile, done) {
+    // asynchronous verification, for effect...
+    process.nextTick(function () {
+      
+      // To keep the example simple, the user's Google profile is returned to
+      // represent the logged-in user. In a typical application, you would want
+      // to associate the Google account with a user record in your database,
+      // and return that user instead.
+      profile.identifier = identifier;
+      return done(null, profile);
+    });
+  }
+));
+
+
+
+
+
+app.configure(function() {
+	app.use(express.static(__dirname + '/public'));
+	app.use(express.logger('dev'));
+	app.use(express.bodyParser());
+    app.use(express.cookieParser());
+  	app.use(express.session({ secret: 'keyboard cat' }));
+  	// Initialize Passport! Also use passport.session() middleware, to support
+  	// persistent login sessions (recommended).
+  	app.use(passport.initialize());
+  	app.use(passport.session());
+});
+
+//define model
+var Todo = mongoose.model('Todo', {text : String});
+
+//routes
+app.get('/api/todos', ensureAuthenticated, function(req, res) {
+	Todo.find(function(err, todos) {
 		if (err) {
-			console.log('ERROR connecting to: ' + self.dburistring + '. ' + err);
+			res.send(err);
 		}
-		else {
-			console.log('Succeed connected to: ' + self.dburistring);
-		}
+		res.json(todos);
 	});
+});
 
-	var Todo = mongoose.model('Todo', {text : String});
-
-	//routes
-	self.app.get('/api/todos', function(req, res) {
+app.post('/api/todos', ensureAuthenticated, function(req, res) {
+	Todo.create({
+		text : req.body.text,
+		done : false
+	}, function(err, todo) {
+		if (err) {
+			res.send(err);
+		}
 		Todo.find(function(err, todos) {
 			if (err) {
 				res.send(err);
@@ -156,79 +102,67 @@ var SampleApp = function() {
 			res.json(todos);
 		});
 	});
+});
 
-	self.app.post('/api/todos', function(req, res) {
-		Todo.create({
-			text : req.body.text,
-			done : false
-		}, function(err, todo) {
+app.delete('/api/todos/:todo_id', ensureAuthenticated, function(req, res) {
+	Todo.remove({_id : req.params.todo_id}, function(err, todo) {
+		if (err) {
+			res.send(err);
+		}
+		Todo.find(function(err, todos) {
 			if (err) {
 				res.send(err);
 			}
-			Todo.find(function(err, todos) {
-				if (err) {
-					res.send(err);
-				}
-				res.json(todos);
-			});
+			res.json(todos);
 		});
 	});
-
-	self.app.delete('/api/todos/:todo_id', function(req, res) {
-		Todo.remove({_id : req.params.todo_id}, function(err, todo) {
-			if (err) {
-				res.send(err);
-			}
-			Todo.find(function(err, todos) {
-				if (err) {
-					res.send(err);
-				}
-				res.json(todos);
-			});
-		});
-	});
-
-	self.app.get('*', function(req, res) {
-		res.sendfile('./public/index.html');
-	});
+});
 
 
+// GET /auth/google
+// Use passport.authenticate() as route middleware to authenticate the
+// request. The first step in Google authentication will involve redirecting
+// the user to google.com. After authenticating, Google will redirect the
+// user back to this application at /auth/google/return
+app.get('/auth/google',
+  passport.authenticate('google', { failureRedirect: '/login' }),
+  function(req, res) {
+    res.redirect('/');
+  });
 
-    };
+// GET /auth/google/return
+// Use passport.authenticate() as route middleware to authenticate the
+// request. If authentication fails, the user will be redirected back to the
+// login page. Otherwise, the primary route function function will be called,
+// which, in this example, will redirect the user to the home page.
+app.get('/auth/google/return',
+  passport.authenticate('google', { failureRedirect: '/login' }),
+  function(req, res) {
+    res.redirect('/');
+  });
 
-
-    /**
-     *  Initializes the sample application.
-     */
-    self.initialize = function() {
-        self.setupVariables();
-        self.populateCache();
-        self.setupTerminationHandlers();
-
-        // Create the express server and routes.
-        self.initializeServer();
-    };
-
-
-    /**
-     *  Start the server (starts up the sample application).
-     */
-    self.start = function() {
-        //  Start the app on the specific interface (and port).
-        self.app.listen(self.port, self.ipaddress, function() {
-            console.log('%s: Node server started on %s:%d ...',
-                        Date(Date.now() ), self.ipaddress, self.port);
-        });
-    };
-
-};   /*  Sample Application.  */
+app.get('/logout', function(req, res){
+  req.logout();
+  res.redirect('/');
+});
 
 
+app.get('*', function(req, res) {
+	res.sendfile('./public/login.html');
+});
 
-/**
- *  main():  Main code.
- */
-var zapp = new SampleApp();
-zapp.initialize();
-zapp.start();
+
+app.listen(port);
+console.log('App listening on port ' + port);
+
+// Simple route middleware to ensure user is authenticated.
+// Use this route middleware on any resource that needs to be protected. If
+// the request is authenticated (typically via a persistent login session),
+// the request will proceed. Otherwise, the user will be redirected to the
+// login page.
+function ensureAuthenticated(req, res, next) {
+  if (req.isAuthenticated()) { return next(); }
+  res.redirect('/login')
+}
+
 
